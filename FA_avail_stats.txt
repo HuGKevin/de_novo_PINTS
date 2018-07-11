@@ -1,0 +1,13 @@
+"Subtype"	"Responsible.gene"	"Percentage"	"Location"	"kDa"	"Order"
+"1"	"A"	"FANCA"	57	"16q24.3"	"163"	1
+"3"	"C"	"FANCC"	15	"9q22.3"	"63"	2
+"8"	"G"	"FANCG/XRCC9"	9	"9p13"	"68"	3
+"4"	"D1"	"FANCD1/BRCA2"	4	"13q12-13"	"380"	4
+"5"	"D2"	"FANCD2"	3	"3p25.3"	"155, 162"	5
+"7"	"F"	"FANCF"	2	"11p15"	"42"	6
+"10"	"J"	"FANCJ/BACH1/BRIP1"	1.6	"17q22-q24"	"130"	7
+"6"	"E"	"FANCE"	1	"6p21-22"	"60"	8
+"2"	"B"	"FANCB (FAAP95)"	0.3	"Xp22.31"	"95"	9
+"9"	"I"	"Not identified"	0.1	"?"	"?"	10
+"11"	"L"	"FANCL/PHF9/POG (FAAP43)"	0.1	"2p16.1"	"43"	11
+"12"	"M"	"FANCM/Hef (FAAP250)"	0.1	"14q21.3"	"250"	12

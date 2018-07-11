@@ -1,0 +1,277 @@
+---
+title: "Heterogeneity Regression"
+author: "Kevin Hu"
+date: "November 11, 2017"
+output: html_document
+---
+
+```{r setup, echo = FALSE}
+library(ggplot2)
+```
+
+## Intro
+
+We are trying to find a distribution that describes the distribution of heterogeneity over a heterogenous Mendelian disease. More basically, assuming a certain number of genes are causal, what is the distribution of risk over them? We're going to look at several different diseases with some degree of information known about their heterogeneity.
+
+First, a few words on terminology. People haven't really thought about this problem, or so it seems, so we get a first crack at it. We'll define by *index of heterogeneity* the true number of genes causal for a disease, and by *degree of heterogeneity* the percentage of cases of a disease explained by a gene. 
+
+# Exponential Decay
+
+We first construct a few models assuming that the heterogeneity of each gene decreases by an exponential decay model. Each successive gene explains a proportion of cases that is some portion of the previous gene, i.e. for a set of genes $\{g_1, g_2, \ldots, g_n\}$ causal for a disease, if $P(g_x)$ is the proportion of cases explained by $g_x$, then $P(g_{x+1}) = \lambda \cdot P(g_x)$.
+
+### Leber Congenital Amaurosis (LCA)
+
+LCA is currently understood to have 25 genes causing it, with 14 genes explaining between 73% and 94% of cases (Kumaran 2017). The paper itself says 70% - 80%, but the first numbers were gotten by compiling their tables. 
+
+We have information from the DDD database on de novo instances of LCA, for which 24 cases spanning 11 genes are discovered. We assume that the 24 cases that are given are 60% of the total cases that DDD obtained, extrapolating from data on the percentage of cases that don't yet have a gene associated with them. 
+
+```{r LCA_DDD}
+LCA <- read.csv("LCA_data.csv", header = TRUE, sep = "\t")
+LCA_plot <- plot(LCA$ln_perc ~ LCA$Gene)
+
+LCA_fit <- lm(LCA$ln_perc ~ LCA$Gene)
+print(summary(LCA_fit))
+regres_LCA_DDD <- function(x) exp(x * LCA_fit$coefficients[2] + LCA_fit$coefficients[1])
+
+LCA_plot <- plot(LCA$perc ~ LCA$Gene, xlab = "Gene #", ylab = "Percentage of cases explained")
+curve(regres_LCA_DDD, 0, 20, add = TRUE) 
+title(main = "LCA heterogeneity distribution from DDD 2014")
+
+```
+
+We can do this again, using data directly from Kumaran et al. 
+
+```{r LCA_Kumaran}
+LCA <- read.table("LCA_Kumaran_avail_stats.txt", header = TRUE, sep = "\t")
+LCA_plot <- plot(LCA$Approximate.frequency ~ LCA$Order)
+
+LCA_Kum_fit <- lm(log(LCA$Approximate.frequency) ~ LCA$Order)
+print(summary(LCA_fit))
+regres_LCA_Kum <- function(x) exp(x * LCA_Kum_fit$coefficients[2] + LCA_Kum_fit$coefficients[1])
+
+LCA_plot <- plot(LCA$Approximate.frequency ~ LCA$Order, xlab = "Gene #", ylab = "Percentage of cases explained")
+curve(regres_LCA_Kum, 0, 20, add = TRUE) 
+title(main = "LCA heterogeneity distribution from Kumaran 2017")
+```
+
+### Fanconi Anemia (FA)
+
+Fanconi Anemia is another such disease which is Mendelian, heterogeneous, and has a lot of information already available. We're using data taken from Taniguchi et al, 2006, in which 
+
+```{r FA_Taniguchi}
+FA <- read.table("FA_avail_stats.txt", header = TRUE, sep = "\t")
+FA_plot <- plot(FA$Percentage ~ FA$Order)
+
+FA_fit <- lm(log(FA$Percentage) ~ FA$Order)
+summary(FA_fit)
+regres_FA <- function(x) exp(x * FA_fit$coefficients[2] + FA_fit$coefficients[1])
+
+FA_plot <- plot(FA$Percentage ~ FA$Order, xlab = "Gene #", ylab = "Percentage of cases explained")
+curve(regres_FA, 0, 20, add = TRUE)
+  title(main = "FA heterogeneity distribution from Taniguchi 2006")
+```
+
+Let's then take a look at the frequencies of the genes for each disease then. 
+
+```{r Exp_dec_pred}
+predicted <- matrix(rep(0, 75), nrow = 25)
+predicted <- data.frame(predicted)
+colnames(predicted) <- c("LCA_DDD", "LCA_Kum", "FA_Tan")
+
+predicted$LCA_DDD <- regres_LCA_DDD(1:25)
+predicted$LCA_Kum <- regres_LCA_Kum(1:25)
+predicted$FA_Tan <- regres_FA(1:25)
+
+predicted
+```
+# Gamma Distribution
+
+We're going to look at a few other models to see if they might fit better. The exponential decay model does fit nicely for existing genes, but given that it's asymptotic to 0, it suggests an infinite number of causal genes, which isn't quite useful. The assumption that each causal gene explains the same proportion of cases as the previous gene is also not well-founded. 
+
+The gamma distribution seems promising given that it has domain over the reals, is strictly positive, and has a lot of flexibility. The difficulty is in finding an effective means of regression. Avraham on CrossValidated describes the Method of Moments, so we're going to utilize that: compute the mean and variance of the dataset, from which the scale and shape parameters can be computed. 
+
+### Fanconi Anemia (FA)
+
+Fanconi Anemia is another such disease which is Mendelian, heterogeneous, and has a lot of information already available. We're using data taken from Taniguchi et al, 2006, in which 
+
+```{r FA_Taniguchi_gamma}
+FA <- read.table("FA_avail_stats.txt", header = TRUE, sep = "\t")
+FA_plot <- plot(FA$Percentage ~ FA$Order)
+
+expected <- mean(FA$Percentage)
+variance <- var(FA$Percentage)
+theta <- variance/expected
+alpha <- expected/theta
+regres_FA_gamma <- function(x) dgamma(x, alpha, 1/theta)*100
+
+FA_plot <- plot(FA$Percentage ~ FA$Order, xlab = "Gene #", ylab = "Percentage of cases explained")
+curve(regres_FA_gamma, 0, 20, add = TRUE)
+  title(main = "FA heterogeneity distribution from Taniguchi 2006 (Gamma)")
+```
+
+This method of regression doesn't give us very good results. We can find a better fit by hand, as shown:
+
+```{r FA_Tan_gamma_hand}
+FA <- read.table("FA_avail_stats.txt", header = TRUE, sep = "\t")
+FA_plot <- plot(FA$Percentage ~ FA$Order)
+
+theta <- .7
+alpha <- 1.8
+regres_FA_gamma <- function(x) dgamma(x, alpha, 1/theta)*100
+
+FA_plot <- plot(FA$Percentage ~ FA$Order, xlab = "Gene #", ylab = "Percentage of cases explained")
+curve(regres_FA_gamma, 0, 20, add = TRUE)
+  title(main = "FA heterogeneity distribution from Taniguchi 2006 (Gamma by hand)")
+```
+
+Possible explanations are sampling bias, a better fit for undiscovered genes, or... something else?
+
+### Leber Congenital Amaurosis (LCA)
+
+Let's try this out with LCA and see if it works any better.
+
+```{r LCA_Kumaran_gamma}
+LCA <- read.table("LCA_Kumaran_avail_stats.txt", header = TRUE, sep = "\t")
+LCA_plot <- plot(LCA$Approximate.frequency ~ LCA$Order)
+
+expected <- mean(LCA$Approximate.frequency)
+variance <- var(LCA$Approximate.frequency)
+theta <- variance/expected
+alpha <- expected/theta
+alpha
+theta
+regres_LCA_gamma <- function(x) dgamma(x, alpha, 1/theta)*100
+
+LCA_plot <- plot(LCA$Approximate.frequency ~ LCA$Order, xlab = "Gene #", ylab = "Percentage of cases explained")
+curve(regres_LCA_gamma, 0, 20, add = TRUE) 
+title(main = "LCA heterogeneity distribution from Kumaran 2017 (Gamma)")
+```
+
+#Cumulative Probability Distributions
+
+It may be the case that using CDFs rather than PDFs would simplify the fit process. We'll experiment a bit with using CDFs for FA and LCA using both the exponential and gamma distributions as a comparison with the PDF methods, as well as potential explore usage of geometric or hypergeometric distributions. 
+
+### FA
+
+Let's just go for putting a Poisson on there right now, and see what the fit looks like for the parameters. 
+``` {r CDF_FA_pois}
+FA <- read.table("FA_avail_stats.txt", header = TRUE, sep = "\t")
+FA_CDF <- FA[,c(3,6)]
+for(index in 2:length(FA_CDF[,1])){
+  FA_CDF$Percentage[index] <- sum(FA_CDF$Percentage[c(index,index-1)])
+}
+
+pois <- function(x, lambda) ppois(x, lambda)
+
+FA_plot <- plot(FA_CDF$Percentage/100 ~ FA_CDF$Order, ylim = c(0,1), xlab = "Gene #", ylab = "Proportion of cases explained")
+curve(pois(x, 1), 0, 20, add = TRUE, col = "red")
+curve(pois(x, 2), 0, 20, add = TRUE, col = "orange")
+curve(pois(x, 3), 0, 20, add = TRUE, col = "green")
+curve(pois(x, 5), 0, 20, add = TRUE, col = "blue")
+  title(main = "FA heterogeneity CDF - Poisson (Taniguchi, 2006)")
+```
+Some notes legend wise: Each curve is the distribution under a different $\lambda$, so going in ROYGBIV order, $\lambda \in \{1, 2, 3, 5\}$
+
+Maybe let's try putting a geometric CDF on it. Note, it doesn't look very good. 
+
+``` {r CDF_FA_geom}
+FA <- read.table("FA_avail_stats.txt", header = TRUE, sep = "\t")
+FA_CDF <- FA[,c(3,6)]
+for(index in 2:length(FA_CDF[,1])){
+  FA_CDF$Percentage[index] <- sum(FA_CDF$Percentage[c(index,index-1)])
+}
+
+geom <- function(x, prob) pgeom(x, prob)
+
+FA_plot <- plot(FA_CDF$Percentage/100 ~ FA_CDF$Order, ylim = c(0,1), xlab = "Gene #", ylab = "Proportion of cases explained")
+curve(geom(x, .2), 0, 20, add = TRUE, col = "red")
+curve(geom(x, .4), 0, 20, add = TRUE, col = "orange")
+curve(geom(x, .6), 0, 20, add = TRUE, col = "green")
+curve(geom(x, .8), 0, 20, add = TRUE, col = "blue")
+  title(main = "FA heterogeneity CDF - Geometric (Taniguchi, 2006)")
+```
+
+This time, colors are under different probabilities of success on a single trial, $x$. $x \in \{0.2, 0.4, 0.6, 0.8\}$.
+
+So let's put a gamma CDF onto this, and perhaps use that to consider if an Erlang distribution would be viable.  
+
+``` {r CDF_FA_gamma}
+FA <- read.table("FA_avail_stats.txt", header = TRUE, sep = "\t")
+FA_CDF <- FA[,c(3,6)]
+for(index in 2:length(FA_CDF[,1])){
+  FA_CDF$Percentage[index] <- sum(FA_CDF$Percentage[c(index,index-1)])
+}
+
+pois <- function(x, lambda) ppois(x, lambda)
+
+ggplot(data = FA_CDF, aes(y = Percentage / 100, x = Order)) + geom_point() + coord_cartesian(ylim = c(0, 1), xlim = c(0, 15)) + ggtitle("FA heterogeneity CDF - Gamma w/rate = 1") +
+  stat_function(fun = pgamma, args = list(shape = 1, rate = 1)) +
+  stat_function(fun = pgamma, args = list(shape = 2, rate = 1)) +
+  stat_function(fun = pgamma, args = list(shape = 3, rate = 1))+
+  stat_function(fun = pgamma, args = list(shape = 4, rate = 1))
+
+ggplot(data = FA_CDF, aes(y = Percentage / 100, x = Order)) + geom_point() + coord_cartesian(ylim = c(0, 1), xlim = c(0, 15)) + ggtitle("FA heterogeneity CDF - Gamma w/rate = 2") +
+  stat_function(fun = pgamma, args = list(shape = 1, rate = 2)) +
+  stat_function(fun = pgamma, args = list(shape = 2, rate = 2)) +
+  stat_function(fun = pgamma, args = list(shape = 3, rate = 2))+
+  stat_function(fun = pgamma, args = list(shape = 4, rate = 2))
+
+ggplot(data = FA_CDF, aes(y = Percentage / 100, x = Order)) + geom_point() + coord_cartesian(ylim = c(0, 1), xlim = c(0, 15)) + ggtitle("FA heterogeneity CDF - Gamma w/rate = 3") +
+  stat_function(fun = pgamma, args = list(shape = 1, rate = 3)) +
+  stat_function(fun = pgamma, args = list(shape = 2, rate = 3)) +
+  stat_function(fun = pgamma, args = list(shape = 3, rate = 3))+
+  stat_function(fun = pgamma, args = list(shape = 4, rate = 3))
+```
+
+# Trying other diseases
+
+This whole regression thing seems to be giving us a bit of trouble. Let's try out some other diseases and see if we can get any better results from them, and be able to derive a better method of gamma regression or something similar as a result. 
+
+## Nephronophthisis (NPH)
+
+Unlike Neil Patrick Harris, NPH is bad for you. The infantile version can present in utero or postnatally, but the median age of presentation is 13. It seems like a good candidate for heterogeneity analysis. 
+
+Let's try a gamma regression on it to see what it would look like. 
+
+```{r}
+neph <- read.csv("Neph_stats.csv", header = TRUE)
+neph$order <- seq(1:11)
+Neph_plot <- plot(Hildebrandt.. ~ order, data = neph)
+
+expected <- mean(neph$Hildebrandt..)
+variance <- var(neph$Hildebrandt..)
+theta <- variance/expected
+alpha <- expected/theta
+regres_neph_gamma <- function(x) dgamma(x, alpha, 1/theta)*100
+
+ggplot() + 
+  geom_point(aes(x = order, y = Hildebrandt..), data = neph) + 
+  geom_smooth(aes(x = seq(0:20), y = regres_neph_gamma(0:20))) + 
+  ggtitle("Gamma Regression on NPH genes")
+```
+
+Doesn't look that great. We can also try out Poisson regression.
+
+```{r}
+lambda <- mean(neph$Hildebrandt..)
+regres_neph_fish <- function(x) dpois(x, lambda)*100
+
+
+ggplot() + 
+  geom_point(aes(x = order, y = Hildebrandt..), data = neph) + 
+  geom_line(aes(x = 1:20, y = regres_neph_fish(1:20)))
+```
+
+This Poisson regression definitely does not work. 
+
+## Dyskeratosis Congenita (DC)
+
+DC is a disorder affecting telomere biology, and presents with some combination of dysplastic nails, pigmentation of chest and neck, and oral leukoplakia. There are a ton of cases observed across 10 genes in the DDD database, which is highly useful as we can extrapolate a lot from it. 
+
+
+
+## References
+
+1. Kumaran, N., Moore, A. T., Weleber, R. G., & Michaelides, M. (2017). Leber congenital amaurosis/early-onset severe retinal dystrophy: clinical features, molecular genetics and therapeutic interventions. British Journal of Ophthalmology, 101(9), 1147-1154. doi:10.1136/bjophthalmol-2016-309975
+
+2. Taniguchi, T. (2006). Molecular pathogenesis of Fanconi anemia: recent progress. Blood, 107(11), 4223-4233. doi:10.1182/blood-2005-10-4240
